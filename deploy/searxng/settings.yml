@@ -1,0 +1,31 @@
+# SearXNG settings for the candidate sourcing stack.
+# use_default_settings keeps upstream defaults; we only pin what matters here.
+use_default_settings: true
+
+server:
+  # secret_key comes from the SEARXNG_SECRET environment variable (compose)
+  limiter: false          # API callers (our search() boundary) look like bots; auth is network-level
+  image_proxy: false
+  port: 8080
+  bind_address: "0.0.0.0"
+
+search:
+  safe_search: 0
+  default_lang: "en-IN"
+  formats:
+    - html
+    - json              # required: search() consumes the JSON API
+
+engines:
+  - name: google
+    engine: google
+    disabled: false
+  - name: bing
+    engine: bing
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    disabled: false
+  - name: brave
+    engine: brave
+    disabled: false

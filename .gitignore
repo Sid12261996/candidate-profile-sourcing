@@ -1,0 +1,25 @@
+# Secrets & local state — never commit
+.env
+*.key
+*service-account*.json
+secrets/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Hermes runtime state synced locally (lives in the volume, not git)
+.hermes-local/
+
+# OS noise
+.DS_Store
+
+# local-mode queue contents (structure tracked via .gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+
+
+openspec/changes/archive

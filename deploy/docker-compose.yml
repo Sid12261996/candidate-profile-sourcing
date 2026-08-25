@@ -1,0 +1,57 @@
+services:
+  hermes:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: candidate-sourcing/hermes:0.19.0
+    container_name: cps-hermes
+    env_file:
+      # Optional at parse time so bare `docker compose config` works pre-bootstrap;
+      # run-local.sh always creates .env before `up`.
+      - path: ../.env
+        required: false
+    environment:
+      # Inside the compose network the search service is reachable by name (D4)
+      SEARXNG_BASE_URL: http://searxng:8080
+    ports:
+      # Loopback-only exposure; open up deliberately when fronting with TLS.
+      - "127.0.0.1:9119:9119"
+    volumes:
+      - hermes_home:/hermes-home
+      # Read-only repo view inside the container: cron jobs run with workdir=/workspace,
+      # giving execute_code access to skill scripts and config/workflow.yaml.
+      - ..:/workspace:ro
+      # Read-write queue folders for the local storage backend (design D3).
+      - ../data:/workspace/data
+    depends_on:
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9119/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:2026.8.22-9fea41204
+    container_name: cps-searxng
+    volumes:
+      # NOTE: not read-only - the searxng entrypoint chowns/derives files here
+      - ./searxng:/etc/searxng
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+      SEARXNG_BASE_URL: http://localhost:8080/
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  hermes_home:

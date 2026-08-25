@@ -1,0 +1,57 @@
+# Workflow configuration for the candidate sourcing pipeline.
+# Consumed by skill scripts and the Hermes cron job. No secrets belong here.
+
+storage:
+  backend: local                  # local | gdrive (gdrive = production switch, design D3)
+
+drive:                            # used only when storage.backend = gdrive
+  remote: hr-drive                # rclone remote name (configured inside container)
+  folders:
+    jds_pending: jds-pending
+    jds_processed: jds-processed
+    jds_failed: jds-failed
+    exports_inbox: exports-inbox
+  quarantine_after_consecutive_failures: 3
+
+role_families:
+  workspace_designer:
+    title_patterns: ["workspace designer", "workplace designer", "interior designer"]
+    portfolio_sources: true       # design family -> Behance/Dribbble discovery on
+  graphic_designer:
+    title_patterns: ["graphic designer", "visual designer", "brand designer"]
+    portfolio_sources: true
+  client_success:
+    title_patterns: ["client success", "customer success", "account manager"]
+    portfolio_sources: false
+  business_development:
+    title_patterns: ["business development", "bd manager", "sales manager"]
+    portfolio_sources: false
+
+defaults:                         # applied when a JD omits a field (never invented values)
+  experience_band_years: { min: null, max: null }   # null = unspecified
+  locations: []                                     # empty = no location hard-filter
+
+hard_filters:
+  unknown_location_policy: passthrough_flagged     # missing data never silently rejects
+
+scoring:
+  top_n_per_jd_per_run: 10
+  score_range: [0, 100]
+
+dedup:
+  url_exact_match: true
+  fuzzy_name_employer:
+    enabled: true
+    threshold: 0.85               # normalized similarity to flag possible duplicate
+
+search_backend:
+  provider: searxng
+  base_url_env: SEARXNG_BASE_URL  # e.g. http://searxng:8080 inside the compose network
+  fallback: duckduckgo            # used only if SearXNG unreachable
+  max_queries_per_jd_per_run: 12  # conservative daily budget per JD
+
+notification:
+  idle_runs_silent: true          # empty queue + empty inbox -> [SILENT]
+
+retention:
+  purge_rejected_after_months: 6
