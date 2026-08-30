@@ -12,6 +12,7 @@ import re
 from difflib import SequenceMatcher
 
 from config_loader import load_config
+from ledger import TERMINAL_STATUSES
 
 _STOPWORDS = {"ltd", "limited", "pvt", "private", "inc", "llp", "co", "company",
               "technologies", "technology", "solutions", "studios", "studio"}
@@ -74,14 +75,34 @@ def classify(record: dict, ledger_rows: list[dict],
 
 
 def apply_dedup(records: list[dict], ledger_rows: list[dict],
-                cfg: dict | None = None) -> list[dict]:
+                cfg: dict | None = None,
+                allowed_urls: set[str] | None = None,
+                jd_key: str | None = None) -> list[dict]:
     """Annotate each record with 'dedup_status' and matched ledger identity.
 
     Spec semantics:
       duplicate           -> suppressed upstream (never occupies a top-N slot)
       possible-duplicate  -> KEPT but flagged; humans decide
       new                 -> flows through untouched
+
+    `allowed_urls` + `jd_key` (design D3): URLs of the re-added JD's own prior
+    NON-terminal rows. Only rows that (a) hold one of those URLs, (b) are not
+    terminal, and (c) carry this jd_key / no source_jd at all are exempt from
+    suppression - so re-processing can re-admit its own earlier picks while
+    terminal statuses and other JDs' rows suppress unconditionally.
     """
+    allowed = {u for u in (allowed_urls or set()) if u}
+    if allowed:
+        exempt_ids = []
+        for i, row in enumerate(ledger_rows):
+            status = str(row.get("status") or "").strip().lower()
+            overlaps = bool(_urls_of(row) & allowed)
+            own = (not str(row.get("source_jd") or "").strip()
+                   or jd_key is None or row.get("source_jd") == jd_key)
+            if overlaps and status not in TERMINAL_STATUSES and own:
+                exempt_ids.append(i)
+        ledger_rows = [row for i, row in enumerate(ledger_rows)
+                       if i not in exempt_ids]
     out = []
     for rec in records:
         status, matched = classify(rec, ledger_rows, cfg)

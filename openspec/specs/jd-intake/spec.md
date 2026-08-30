@@ -28,6 +28,10 @@ The system SHALL detect every JD document placed in the configured pending folde
 - **WHEN** the pending folder contains no documents at run start
 - **THEN** no JD processing occurs for the intake stage and the absence is reflected in the run summary
 
+#### Scenario: Re-added JD after successful processing
+- **WHEN** a JD filename already exists in the processed folder and is re-added to the pending folder
+- **THEN** the run detects this JD as re-processable and does not silently suppress all results via dedup; prior non-terminal ledger rows for this JD no longer suppress new selections
+
 ### Requirement: Parse JD into a requirement profile
 The system SHALL convert each JD document into a structured requirement profile containing at minimum: role title, role family, seniority level, must-have skills/experience, preferred skills, experience band in years, location constraints (city/remote), and any scoring weights or specifics stated in the description.
 
@@ -38,6 +42,10 @@ The system SHALL convert each JD document into a structured requirement profile 
 #### Scenario: Partially specified JD
 - **WHEN** a JD omits a field (e.g., no explicit experience band)
 - **THEN** the profile records that field as unspecified rather than inventing a value, and defaults documented in the workflow config apply
+
+#### Scenario: Re-added JD re-parsing
+- **WHEN** a re-added JD is parsed again
+- **THEN** the profile is rebuilt from the raw text and tracking updates to reflect re-processing
 
 ### Requirement: Move processed JDs out of the queue
 The system SHALL move a JD file from the pending folder to the processed folder only after its full pipeline (intake through ledger update for that JD) completes successfully within the run.
@@ -50,9 +58,17 @@ The system SHALL move a JD file from the pending folder to the processed folder 
 - **WHEN** the run errors out while processing a JD (e.g., search backend unavailable)
 - **THEN** the JD file remains in the pending folder so the next scheduled run retries it
 
+#### Scenario: Re-added JD processing
+- **WHEN** a re-added JD completes its pipeline
+- **THEN** the JD file is moved to processed and new candidates are appended to the ledger with prior non-terminal rows relaxed
+
 ### Requirement: Quarantine repeatedly failing JDs
 The system SHALL move a JD file to the failed folder once it has failed processing on 3 consecutive runs, recording the failure reason in the run notification.
 
 #### Scenario: Persistently malformed JD
 - **WHEN** a JD cannot be parsed on three consecutive daily runs
 - **THEN** the file is moved to the failed folder and the run notification names the file and the reason, and subsequent runs no longer attempt it
+
+#### Scenario: Re-added JD after quarantine
+- **WHEN** a previously quarantined JD is re-added to pending
+- **THEN** it is treated as a new JD and processed fresh

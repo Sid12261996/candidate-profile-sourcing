@@ -87,3 +87,34 @@ def test_location_normalisation():
     p = jd_parser.parse_jd("# X\nBased in Bangalore / Bengaluru hybrid. 3-5 years.")
     assert p["locations"].count("bengaluru") == 1 and "bangalore" not in p["locations"]
     assert p["experience_band_years"] == {"min": 3, "max": 5}
+
+
+# ------------------------------------------------------------- work mode (1.2)
+
+def test_work_mode_explicit_onsite():
+    p = jd_parser.parse_jd("# Workspace Designer\nThis is an on-site role from our Mumbai office.")
+    assert p["work_mode"] == "onsite"
+
+
+def test_work_mode_explicit_remote():
+    p = jd_parser.parse_jd("# Support Engineer\nThis is a fully remote position, work from anywhere.")
+    assert p["work_mode"] == "remote"
+    assert p["locations"] == []            # remote is a mode, not a city
+
+
+def test_work_mode_explicit_hybrid():
+    p = jd_parser.parse_jd("# Designer\nHybrid schedule: 3 days a week from our Pune office.")
+    assert p["work_mode"] == "hybrid"
+
+
+def test_work_mode_silent_gets_default():
+    raw = jd_parser.parse_jd(PARTIAL_JD)   # no mode mentioned anywhere
+    assert raw["work_mode"] is None
+    eff = jd_parser.apply_defaults(raw, {"defaults": {"work_mode": "onsite"}})
+    assert eff["work_mode"] == "onsite"    # JD silence -> config default
+
+
+def test_work_mode_specified_never_overridden():
+    raw = jd_parser.parse_jd("# Designer\nFully remote role covering Bengaluru clients.")
+    eff = jd_parser.apply_defaults(raw, {"defaults": {"work_mode": "onsite"}})
+    assert eff["work_mode"] == "remote"

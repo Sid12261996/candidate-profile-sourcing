@@ -27,7 +27,13 @@ SENIORITY_PATTERNS = [
 CITY_PATTERNS = [
     "mumbai", "bengaluru", "bangalore", "delhi", "noida", "gurgaon", "gurugram",
     "hyderabad", "pune", "chennai", "kolkata", "ahmedabad", "jaipur", "indore",
-    "chandigarh", "kochi", "coimbatore", "remote",
+    "chandigarh", "kochi", "coimbatore",
+]
+
+WORK_MODE_PATTERNS = [
+    ("remote", r"\bfully remote\b|\bremote[- ]only\b|\bremote (?:work|role|position|job)\b|\bwork(?:ing)? from anywhere\b"),
+    ("hybrid", r"\bhybrid\b|\bfew days (?:a week |per week )?(?:in[- ]?office|from the office)\b"),
+    ("onsite", r"\bon[- ]?site\b|\bin[- ]?office\b|\bfrom our office\b|\bwork from office\b"),
 ]
 
 _EXPERIENCE_RE = [
@@ -90,6 +96,15 @@ def detect_locations(text: str) -> list[str]:
     return found
 
 
+def detect_work_mode(text: str) -> str | None:
+    """onsite | hybrid | remote when stated; None when the JD is silent."""
+    low = text.lower()
+    for mode, pattern in WORK_MODE_PATTERNS:
+        if re.search(pattern, low):
+            return mode
+    return UNSPECIFIED
+
+
 def _extract_section(text: str, aliases: list[str]) -> list[str]:
     lines = text.splitlines()
     items, collecting = [], False
@@ -129,6 +144,7 @@ def parse_jd(text: str, cfg: dict | None = None) -> dict:
             "max": detect_experience_years(text)[1],
         },
         "locations": detect_locations(text),
+        "work_mode": detect_work_mode(text),
         "scoring_weights": detect_weights(text),
     }
 
@@ -149,6 +165,9 @@ def apply_defaults(profile: dict, cfg: dict | None = None) -> dict:
 
     if not profile["locations"]:
         eff["locations"] = list(defaults.get("locations", []))
+
+    if not profile.get("work_mode"):
+        eff["work_mode"] = defaults.get("work_mode") or "onsite"
     return eff
 
 

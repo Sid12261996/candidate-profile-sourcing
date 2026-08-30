@@ -90,9 +90,16 @@ def test_all_backends_fail_raises(monkeypatch):
 
 def test_build_queries_respects_location_and_cap():
     q = xray.build_queries(PROFILE)
-    assert q == ['site:linkedin.com/in "Workspace Designer" "mumbai"']
+    # every query carries India scoping: city terms + country (task 2.1)
+    assert q == ['site:linkedin.com/in "Workspace Designer" "mumbai" india',
+                 'site:linkedin.com/in "Workspace Designer" india']
     big = dict(PROFILE, locations=["a", "b", "c", "d", "e"])
     assert len(xray.build_queries(big)) <= 4  # capped by max_queries_per_jd_per_run
+
+
+def test_build_queries_india_scoped_without_locations():
+    q = xray.build_queries({"title": "Workspace Designer", "locations": []})
+    assert q == ['site:linkedin.com/in "Workspace Designer" india']
 
 
 def test_parse_result_extracts_name_headline():
@@ -124,11 +131,26 @@ def test_run_track_a_merges_duplicates_across_queries():
     assert len(urls) == len(set(urls)) and len(recs) == 2 and not errs
 
 
+def test_run_track_a_accepts_expansion_plan_queries():   # task 3.2
+    plan_queries = ['site:behance.net "designer" mumbai india',
+                    'site:linkedin.com/in "lead designer" india']
+    seen = []
+
+    def fake_search(query):
+        seen.append(query)
+        return [{"title": "X - Designer | LinkedIn",
+                 "url": f"https://in.linkedin.com/in/x{len(seen)}"}]
+    recs, _ = xray.run_track_a(PROFILE, search_fn=fake_search,
+                               queries=plan_queries)
+    assert seen == plan_queries               # runner executed the plan batch
+    assert len(recs) == 2
+
+
 def test_graceful_degradation_backend_failure(monkeypatch):  # task 5.4
     def failing(query):
         raise search_mod.SearchBackendError(f"all search backends failed for: {query!r}")
     recs, errs = xray.run_track_a(PROFILE, search_fn=failing)
-    assert recs == [] and len(errs) == 1   # zero candidates, error noted, no exception
+    assert recs == [] and len(errs) == 2   # one error per issued query; no exception
 
 
 # -------------------------------------------------------------- portfolio

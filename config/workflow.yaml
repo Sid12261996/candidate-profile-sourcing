@@ -30,13 +30,26 @@ role_families:
 defaults:                         # applied when a JD omits a field (never invented values)
   experience_band_years: { min: null, max: null }   # null = unspecified
   locations: []                                     # empty = no location hard-filter
+  work_mode: onsite               # onsite | hybrid | remote (JD silence -> on-site)
+
+geography:
+  allowed_country: india          # sourcing + filters + rubric all scope to this
+  enforce_hard_filter: true       # false disables the country elimination (rollback knob)
 
 hard_filters:
   unknown_location_policy: passthrough_flagged     # missing data never silently rejects
+  work_mode_enforcement: true     # eliminate explicit on-site unwillingness signals
 
 scoring:
   top_n_per_jd_per_run: 10
   score_range: [0, 100]
+  exclude_zero_scores: true        # zero-score candidates never reach the ledger
+  max_scored_per_jd_per_run: 150   # cost cap for LLM rubric calls per JD per run
+
+expansion:
+  enabled: true                   # LLM query-expansion stage before discovery
+  min_combinations: 200           # target funnel breadth floor
+  max_combinations: 500
 
 dedup:
   url_exact_match: true
@@ -48,7 +61,7 @@ search_backend:
   provider: searxng
   base_url_env: SEARXNG_BASE_URL  # e.g. http://searxng:8080 inside the compose network
   fallback: duckduckgo            # used only if SearXNG unreachable
-  max_queries_per_jd_per_run: 12  # conservative daily budget per JD
+  max_queries_per_jd_per_run: 80  # expanded-funnel budget per JD per run (resume next run)
 
 notification:
   idle_runs_silent: true          # empty queue + empty inbox -> [SILENT]

@@ -33,9 +33,11 @@ def _extract_json(text: str) -> dict:
 
 
 def score_candidate(profile: dict, record: dict, llm_fn) -> dict:
+    locations = ", ".join(profile.get("locations") or []) or "(stated in JD profile)"
     prompt = (load_prompt()
               .replace("{{jd_profile}}", json.dumps(profile, default=str))
-              .replace("{{candidate}}", json.dumps(record, default=str)))
+              .replace("{{candidate}}", json.dumps(record, default=str))
+              .replace("{{onsite_locations}}", locations))
     parsed = _extract_json(llm_fn(prompt))
     score = max(0, min(100, int(parsed["score"])))
     return {

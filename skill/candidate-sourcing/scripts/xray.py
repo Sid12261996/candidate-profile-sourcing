@@ -26,11 +26,12 @@ def build_queries(profile: dict, cfg: dict | None = None) -> list[str]:
     if not role_terms:
         return []
 
-    locations = profile.get("locations") or [None]
-    queries = []
-    for loc in locations:
-        loc_part = f' "{loc}"' if loc else ""
-        queries.append(f'{_SITE} "{role_terms}"{loc_part}')
+    # Geography gate (design D1, layer 1): every query carries India scoping -
+    # the JD's on-site city terms when known, plus an explicit country term.
+    locations = profile.get("locations") or []
+    india = (cfg.get("geography", {}).get("allowed_country") or "india").lower()
+    queries = [f'{_SITE} "{role_terms}" "{loc}" {india}' for loc in locations]
+    queries.append(f'{_SITE} "{role_terms}" {india}')
     return queries[:cap]
 
 
@@ -59,17 +60,20 @@ def parse_result(result: dict) -> dict | None:
 
 
 def run_track_a(profile: dict, cfg: dict | None = None,
-                search_fn=search.search) -> tuple[list[dict], list[str]]:
+                search_fn=search.search,
+                queries: list[str] | None = None) -> tuple[list[dict], list[str]]:
     """Discover candidates for one JD profile.
 
-    Returns (records, errors). Per spec (graceful degradation): a backend
-    failure contributes zero records and an error note - never raises out.
+    `queries` overrides profile-derived queries - used by the expansion stage
+    (design D4) to feed a validated, budget-sliced query plan through the same
+    runner. Returns (records, errors). Per spec (graceful degradation): a
+    backend failure contributes zero records and an error note - never raises.
     """
     cfg = cfg or load_config()
     records_by_url: dict[str, dict] = {}
     errors: list[str] = []
 
-    for query in build_queries(profile, cfg):
+    for query in (queries if queries is not None else build_queries(profile, cfg)):
         try:
             for result in search_fn(query):
                 rec = parse_result(result)

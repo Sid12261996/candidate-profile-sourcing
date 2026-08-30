@@ -39,6 +39,56 @@ After scoring, the system SHALL select at most the 10 highest-scoring not-yet-ex
 - **WHEN** only 4 candidates survive filtering and score above threshold
 - **THEN** exactly those 4 flow to the ledger
 
+#### Scenario: Zero-score candidates excluded from top-N
+- **WHEN** zero-score candidates are recorded in the exclusions registry
+- **THEN** they never occupy a slot in the top-10 selection
+
+### Requirement: India hard filter
+Before any LLM evaluation, the system SHALL apply a deterministic hard filter that eliminates candidates whose location contains any non-India country signal (e.g., "usa", "uae", "london", "singapore").
+
+#### Scenario: Location mismatch eliminated cheaply
+- **WHEN** a JD requires Bangalore-based candidates and a record's location resolves outside the accepted set
+- **THEN** the record is excluded before rubric scoring and consumes no LLM tokens
+
+#### Scenario: India hard filter elimination
+- **WHEN** a record's location contains any non-India country signal (e.g., "usa", "uae", "london", "singapore")
+- **THEN** the record is eliminated with the elimination logged
+
+#### Scenario: On-site willingness filter
+- **WHEN** the JD specifies on-site willingness requirement and a record's location/profile does not indicate willingness
+- **THEN** the record is eliminated with reason flagged
+
+#### Scenario: Unknown location passthrough
+- **WHEN** a record's location is unknown or unspecified
+- **THEN** the record passes through to scoring flagged as unverified rather than being dropped
+
+### Requirement: Rubric scoring against the JD
+Surviving candidates SHALL receive a score from 0-100 assigned by LLM evaluation against the JD's requirement profile, with each score accompanied by a short justification citing which must-have/preferred criteria the candidate meets or lacks.
+
+#### Scenario: Strong match scores high with reasons
+- **WHEN** a senior workspace designer record satisfies all must-haves and most preferred criteria of a lead JD
+- **THEN** the record receives a high score and a justification naming the matched criteria
+
+#### Scenario: Scores are reproducible artifacts
+- **WHEN** scoring completes for a JD
+- **THEN** every scored record's score and justification are persisted so later stages and audits can read them
+
+#### Scenario: India eligibility required
+- **WHEN** the rubric scoring prompt evaluates a candidate
+- **THEN** the prompt requires the candidate to be India-based and willing to work on-site at stated locations
+
+#### Scenario: Established violation ⇒ score 0
+- **WHEN** the rubric has established evidence of India violation
+- **THEN** the record receives a score of exactly 0 with reason
+
+#### Scenario: Unverifiable ⇒ UNVERIFIED
+- **WHEN** India or on-site willingness cannot be verified from available data
+- **THEN** the record is noted as UNVERIFIED (never assumed), flows through to top-N selection
+
+#### Scenario: Zero-score exclusion
+- **WHEN** a candidate receives a score of 0
+- **THEN** the record is excluded from selection and its URL is recorded in the exclusions registry
+
 ### Requirement: Cross-run and cross-track duplicate suppression
 The system SHALL identify candidates already present in the shortlist ledger (matched by exact profile URL when available, otherwise by fuzzy name plus employer similarity) and exclude them from new shortlists regardless of which track re-surfaces them.
 
@@ -49,3 +99,7 @@ The system SHALL identify candidates already present in the shortlist ledger (ma
 #### Scenario: Uncertain identity match is surfaced, not hidden
 - **WHEN** a new record fuzzy-matches an existing ledger row but is not conclusively the same person
 - **THEN** the record is flagged as possible-duplicate in the ledger entry instead of being silently skipped or silently duplicated
+
+#### Scenario: Re-added JD dedup relaxation
+- **WHEN** a JD has been re-added after successful processing
+- **THEN** prior non-terminal ledger rows for this JD no longer suppress new selections; only terminal reviewer statuses (e.g., `rejected`) continue to suppress

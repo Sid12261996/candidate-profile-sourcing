@@ -55,6 +55,49 @@ def test_filter_ignores_unspecified_profile_constraints():
     assert len(survivors) == 1 and eliminated == []
 
 
+# ------------------------------------------------- geography gate (task 2.2)
+
+CFG_GEO = {
+    "geography": {"allowed_country": "india", "enforce_hard_filter": True},
+    "hard_filters": {"work_mode_enforcement": True},
+}
+
+
+@pytest.fixture
+def geo_cfg(monkeypatch):
+    monkeypatch.setattr(score_filters, "load_config", lambda: CFG_GEO)
+
+
+def test_non_india_location_eliminated(geo_cfg):
+    profile = dict(PROFILE, work_mode="onsite", locations=["mumbai"])
+    survivors, eliminated = score_filters.apply_hard_filters(
+        [rec(name="A", location="London, UK")], profile)
+    assert survivors == []
+    assert "non-india" in eliminated[0]["eliminated_because"]
+
+
+def test_remote_only_headline_eliminated_for_onsite_jd(geo_cfg):
+    profile = dict(PROFILE, work_mode="onsite", locations=["mumbai"])
+    survivors, eliminated = score_filters.apply_hard_filters(
+        [rec(name="B", location="Mumbai", title="Designer | Remote Only")], profile)
+    assert survivors == []
+    assert "on-site unwillingness" in eliminated[0]["eliminated_because"]
+
+
+def test_remote_keyword_ignored_when_jd_not_onsite(geo_cfg):
+    profile = dict(PROFILE, work_mode="remote", locations=[])
+    survivors, _ = score_filters.apply_hard_filters(
+        [rec(name="C", location=None, title="Designer | seeking remote")], profile)
+    assert len(survivors) == 1 and "location" in survivors[0]["unverified"]
+
+
+def test_missing_location_passes_flagged_under_geo_gate(geo_cfg):
+    profile = dict(PROFILE, work_mode="onsite", locations=["mumbai"])
+    survivors, eliminated = score_filters.apply_hard_filters(
+        [rec(name="D", location=None, experience_years=8, title="no signals here")], profile)
+    assert not eliminated and survivors[0]["unverified"] == ["location"]
+
+
 # ---------------------------------------------------------------- scoring 7.2
 
 def test_score_candidate_parses_and_clamps():
@@ -64,6 +107,22 @@ def test_score_candidate_parses_and_clamps():
     out = scoring.score_candidate(PROFILE, rec(name="E", location="Mumbai"), llm)
     assert out == {"score": 100, "justification": "strong",
                    "profile_url": None}
+
+
+def test_prompt_carries_eligibility_section_and_locations():  # task 2.3
+    captured = {}
+
+    def llm(prompt):
+        captured["prompt"] = prompt
+        return '{"score": 0, "justification": "not India-based"}'
+
+    profile = dict(PROFILE, work_mode="onsite", locations=["mumbai", "pune"])
+    out = scoring.score_candidate(profile, rec(name="F"), llm)
+    assert out["score"] == 0
+    p = captured["prompt"]
+    assert "Based in India" in p and "{{onsite_locations}}" not in p
+    assert "mumbai, pune" in p
+    assert "UNVERIFIED" in p and "exactly 0" in p
 
 
 def test_save_scores_persists_artifact(tmp_path, monkeypatch):
@@ -105,6 +164,17 @@ def test_top_n_ties_break_deterministically():
     tied = [rec(name="Zoe", score=80, source_urls=["a"]),
             rec(name="Amy", score=80, source_urls=["b"])]
     assert topn.select_top_n(tied, n=1)[0]["name"] == "Amy"
+
+
+def test_top_n_drops_zero_scores_before_ranking():       # task 5.2
+    pool = [rec(name="Zero", score=0, source_urls=["z"]),
+            rec(name="Low", score=5, source_urls=["l"]),
+            rec(name="High", score=90, source_urls=["h"])]
+    picked = topn.select_top_n(pool, n=10)
+    assert [p["name"] for p in picked] == ["High", "Low"]   # zero never ranks
+
+    keep_zeros = topn.select_top_n(pool, n=10, drop_zero_scores=False)
+    assert len(keep_zeros) == 3                              # config opt-out only
 
 
 # ------------------------------------------------------------------ dedup 7.4
@@ -149,3 +219,41 @@ def test_apply_dedup_annotates_records():
     assert annotated[0]["dedup_status"] == "possible-duplicate"
     assert annotated[0]["matched_ledger_name"] == "Priya Sharma"
     assert annotated[1]["dedup_status"] == "new"
+
+
+# --------------------------------------- reprocessing-aware dedup (task 4.2)
+
+def test_allowed_urls_stop_own_jd_rows_from_suppressing():
+    own_prior = [{"candidate_name": "Priya Sharma", "company": "StudioX",
+                  "profile_url": "https://in.linkedin.com/in/priya",
+                  "status": "new", "jd_title": "Old JD"}]
+    incoming = rec(name="Priya Sharma", company="StudioX",
+                   source_urls=["https://in.linkedin.com/in/priya"])
+    # without exemption: suppressed
+    out = dedup.apply_dedup([incoming], own_prior)
+    assert out[0]["dedup_status"] == "duplicate"
+    # with own-JD exemption: eligible again
+    out = dedup.apply_dedup([incoming], own_prior,
+                            allowed_urls={"https://in.linkedin.com/in/priya"})
+    assert out[0]["dedup_status"] == "new"
+    assert "matched_ledger_name" not in out[0]
+
+
+def test_terminal_and_other_jd_rows_still_suppress_during_reprocessing():
+    rows = [
+        {"candidate_name": "Priya Sharma", "company": "StudioX",
+         "profile_url": "u://terminal", "status": "rejected",
+         "source_jd": "this-jd.md"},
+        {"candidate_name": "Ravi K", "company": "OtherJD Co",
+         "profile_url": "u://ravi", "status": "new",
+         "source_jd": "other-jd.md"},                     # different JD's row
+    ]
+    a = rec(name="Priya Sharma", company="StudioX", source_urls=["u://terminal"])
+    b = rec(name="Ravi K", company="OtherJD Co", source_urls=["u://ravi"])
+    # even if allowed_urls is over-broad (contains both), terminal rows and
+    # rows whose source_jd belongs to another JD can never be exempted
+    out = dedup.apply_dedup([a, b], rows,
+                            allowed_urls={"u://terminal", "u://ravi"},
+                            jd_key="this-jd.md")
+    assert out[0]["dedup_status"] == "duplicate"   # terminal never exempted
+    assert out[1]["dedup_status"] == "duplicate"   # other JDs' rows still hold

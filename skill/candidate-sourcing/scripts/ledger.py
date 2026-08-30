@@ -14,9 +14,9 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 
 LEDGER_COLUMNS = [
-    "date_added", "jd_title", "candidate_name", "title", "current_company",
-    "location", "track", "profile_url", "source_urls", "score",
-    "justification", "status", "possible_duplicate_flag", "notes",
+    "date_added", "jd_title", "source_jd", "candidate_name", "title",
+    "current_company", "location", "track", "profile_url", "source_urls",
+    "score", "justification", "status", "possible_duplicate_flag", "notes",
 ]
 
 TERMINAL_STATUSES = {"rejected", "contacted", "interviewing", "hired"}
@@ -44,10 +44,12 @@ def ensure_workbook(path: Path) -> None:
     wb.save(path)
 
 
-def _record_to_row(record: dict, jd_title: str) -> list:
+def _record_to_row(record: dict, jd_title: str,
+                   source_jd: str | None = None) -> list:
     return [
         date.today().isoformat(),
         jd_title,
+        source_jd,                               # optional JD filename (design D3)
         record.get("name"),
         record.get("title"),
         record.get("company"),
@@ -98,14 +100,51 @@ def excluded_urls(path: Path) -> set[str]:
     return out
 
 
+def prior_own_urls(path: Path, jd_key: str, jd_title: str | None = None,
+                   terminal_statuses: set[str] | None = None) -> set[str]:
+    """URLs of THIS JD's own prior non-terminal ledger rows (design D3).
+
+    Used for re-added-JD reprocessing: these rows stop suppressing new
+    selections. Matching is by `source_jd` (filename) when present; legacy
+    rows without it fall back to normalized jd_title equality. Terminal
+    reviewer statuses NEVER match - they always suppress unconditionally.
+    """
+    terminal = terminal_statuses or TERMINAL_STATUSES
+
+    def _norm(value: str | None) -> str:
+        return " ".join(str(value or "").lower().split())
+
+    want_title = _norm(jd_title)
+    out: set[str] = set()
+    for row in load_rows(path):
+        status = str(row.get("status") or "").strip().lower()
+        if status in terminal:
+            continue
+        row_jd = str(row.get("source_jd") or "").strip()
+        if row_jd:
+            if row_jd != jd_key:
+                continue
+        elif not want_title or _norm(row.get("jd_title")) != want_title:
+            continue                            # legacy row: title must match
+        for url in str(row.get("profile_url") or "").split(";"):
+            if url.strip():
+                out.add(url.strip())
+        for url in str(row.get("source_urls") or "").split(";"):
+            if url.strip():
+                out.add(url.strip())
+    return out
+
+
 # ------------------------------------------------------------------- writing
 
 def append_records(path: Path, records: list[dict], jd_title: str,
-                   backup: bool = True) -> int:
+                   backup: bool = True,
+                   source_jd: str | None = None) -> int:
     """Append new rows (status 'new'); never modifies existing rows.
 
-    Raises LedgerLockedError - WITHOUT touching the file - when the workbook
-    seems open in Excel; callers defer to the next run (spec scenario).
+    `source_jd` (optional JD filename) enables reprocessing-aware dedup for
+    future runs (design D3). Raises LedgerLockedError - WITHOUT touching the
+    file - when the workbook seems open in Excel; callers defer to next run.
     """
     if _lock_files(path):
         raise LedgerLockedError(f"workbook looks open in Excel: {path.name}")
@@ -122,7 +161,7 @@ def append_records(path: Path, records: list[dict], jd_title: str,
     ws = wb.active
     existing_before = ws.max_row
     for record in records:
-        ws.append(_record_to_row(record, jd_title))
+        ws.append(_record_to_row(record, jd_title, source_jd))
     try:
         wb.save(path)
     except PermissionError as exc:

@@ -68,6 +68,49 @@ def test_terminal_statuses_drive_exclusions(wb_path):
     assert excluded == {"u://a", "u://r", "u://c", "u://h"}   # 'new' NOT excluded
 
 
+# ------------------------------------------------ prior_own_urls / source_jd (4.1)
+
+def test_source_jd_column_written_when_provided(wb_path):
+    ledger.append_records(wb_path, [rec()], "Workspace Designer",
+                          source_jd="zyeta-role.md")
+    row = ledger.load_rows(wb_path)[0]
+    assert row["source_jd"] == "zyeta-role.md"
+
+
+def test_prior_own_urls_returns_own_non_terminal_only(wb_path):
+    ledger.append_records(wb_path, [
+        rec(name="OwnNew", url="u://own-new"),
+        rec(name="OwnRej", url="u://own-rej"),
+        rec(name="Other", url="u://other"),
+    ], "Designer", source_jd="zyeta-role.md")
+
+    from openpyxl import load_workbook
+    book = load_workbook(wb_path)
+    sheet = book.active
+    status_col = ledger.LEDGER_COLUMNS.index("status") + 1
+    jd_col = ledger.LEDGER_COLUMNS.index("source_jd") + 1
+    sheet.cell(row=3, column=status_col, value="rejected")   # own but terminal
+    sheet.cell(row=4, column=jd_col, value="some-other-jd.md")
+    book.save(wb_path)
+
+    own = ledger.prior_own_urls(wb_path, "zyeta-role.md")
+    assert own == {"u://own-new"}          # terminal own row + other JD excluded
+
+
+def test_prior_own_urls_legacy_title_fallback(wb_path):
+    # legacy rows: no source_jd column value -> normalized title match
+    ledger.append_records(wb_path, [rec(name="Old", url="u://old")], "Lead Designer")
+    own = ledger.prior_own_urls(wb_path, "lead-designer.md", jd_title="lead designer")
+    assert own == {"u://old"}
+    # no title supplied -> no legacy match (never over-match)
+    assert ledger.prior_own_urls(wb_path, "lead-designer.md") == set()
+
+
+def test_prior_own_urls_empty_for_unknown_jd(wb_path):
+    ledger.append_records(wb_path, [rec()], "Designer", source_jd="a.md")
+    assert ledger.prior_own_urls(wb_path, "b.md", jd_title="Designer") == set()
+
+
 # ------------------------------------------------------------------- 8.2
 
 def test_backup_created_before_write(wb_path):
