@@ -66,5 +66,13 @@ search_backend:
 notification:
   idle_runs_silent: true          # empty queue + empty inbox -> [SILENT]
 
+delivery:
+  enabled: true                   # email ledger file after productive runs
+  recipient: snehakannannair@gmail.com # Gmail recipient for ledger attachment
+
+iteration:
+  max_passes: 3                   # max discovery/eval iterations per JD per run
+  time_budget_minutes: 20         # per-run time budget for all JDs (wall-clock)
+
 retention:
   purge_rejected_after_months: 6

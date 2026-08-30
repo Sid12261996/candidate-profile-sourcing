@@ -89,7 +89,7 @@ For JDs whose role family is design, the system SHALL additionally query public 
 - **THEN** portfolio-source results are merged with India-scoped queries only
 
 ### Requirement: LLM-generated expansion plan
-Before discovery, the system SHALL generate an LLM plan producing 200–500 query combinations across title variants, skills, tools, seniority, and on-site cities, validated against min/max bounds, case-insensitive dedupe, and India-scope enforcement.
+Before discovery, the system SHALL generate an LLM plan producing 200–500 query combinations across title variants, skills, tools, seniority, and on-site cities, validated against min/max bounds, case-insensitive dedupe, and India-scope enforcement. The LLM call SHALL authenticate using the API key exposed via the `$CLAUDE_API_KEY` environment variable.
 
 #### Scenario: Expansion plan validation
 - **WHEN** the expansion plan is generated
