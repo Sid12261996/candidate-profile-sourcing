@@ -151,6 +151,9 @@ done
 LLM_OK=false
 if [ -z "$MISSING" ] || [ "$(echo $MISSING | wc -w | tr -d ' ')" -lt 3 ]; then LLM_OK=true; fi
 
+CLAUDE_OK=false
+if env_nonempty CLAUDE_API_KEY; then CLAUDE_OK=true; fi
+
 BACKEND="$(grep -E '^backend:' config/workflow.yaml | head -1 | awk '{print $2}')"
 GOOGLE_OK=false
 if [ "${BACKEND:-local}" != "gdrive" ]; then GOOGLE_OK=true   # local mode: no SA needed
@@ -161,6 +164,8 @@ DASH_USER="$(grep -E '^HERMES_DASHBOARD_BASIC_AUTH_USERNAME=' "$ENV_FILE" | head
 log "Dashboard:      http://localhost:9119  (user: ${DASH_USER:-admin})"
 if $LLM_OK; then log "LLM key:        OK"
 else warn "LLM key:        MISSING -> set one of:${MISSING} in .env (then re-run)"; fi
+if $CLAUDE_OK; then log "Claude API key: OK"
+else warn "Claude API key: MISSING -> set CLAUDE_API_KEY in .env (then re-run)"; fi
 if $GOOGLE_OK && [ "${BACKEND:-local}" != "gdrive" ]; then
   log "Storage:        local queue folders (no external creds needed)"
 elif $GOOGLE_OK; then
@@ -169,7 +174,7 @@ else
   warn "Google SA:      MISSING -> './run-local.sh cp-key <file>' (see docs/setup.md)"
 fi
 
-if $LLM_OK && $GOOGLE_OK; then
+if $LLM_OK && $CLAUDE_OK && $GOOGLE_OK; then
   log "All credentials present. Resume the cron job when ready:"
   log "  docker compose -f deploy/docker-compose.yml exec hermes hermes cron resume $CRON_NAME"
 else
