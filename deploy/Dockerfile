@@ -29,6 +29,7 @@ RUN curl -fsSL -o /tmp/rclone.zip \
 #   mcp  -> MCP client
 RUN pip install "hermes-agent[web,pty,cron,mcp]==${HERMES_VERSION}" \
  && pip install "openpyxl==${OPENPYXL_VERSION}" \
+ && pip install "anthropic" \
  && hermes --version || true
 
 # Skill payload is synced into the volume by run-local.sh; baked copy is a fallback.
