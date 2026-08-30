@@ -8,6 +8,7 @@ Local-first HR sourcing stack: a Hermes Agent runtime plus a SearXNG search serv
   - macOS: give the VM at least 4 GB RAM (gateway + dashboard are modest, but Python images add up).
 - A Google Cloud project (for Drive access) — see *Google Drive credentials* below.
 - An LLM provider API key accepted by Hermes (OpenRouter, Anthropic, OpenAI, Nous Portal, …).
+- **Claude API key** (`$CLAUDE_API_KEY`) for search and query-expansion tasks — see *Claude API key* below.
 
 ## Quickstart
 
@@ -31,8 +32,10 @@ Re-running is always safe; existing credentials, cron jobs, and session history 
 
 | Secret | Where | How |
 |---|---|---|
-| LLM provider key | `.env` (repo root, gitignored) | Copy value from your provider dashboard |
+| LLM provider key | `.env` (repo root, gitignored) | Copy value from your provider dashboard; used for scoring rubric calls |
+| Claude API key | `.env` (repo root, gitignored) | Copy from Anthropic Console; used for search and query-expansion tasks |
 | Google service-account JSON | mounted into the Hermes home volume | See below |
+| Gmail OAuth | Hermes runtime (automatic on first use) | See below |
 | rclone remote config | inside the Hermes home volume | See below |
 
 There must be **no LinkedIn or Naukri credentials anywhere** in this deployment — by design.
@@ -43,6 +46,21 @@ There must be **no LinkedIn or Naukri credentials anywhere** in this deployment 
 cp .env.example .env      # first time only
 $EDITOR .env              # fill in your provider key(s)
 ```
+
+### Claude API key
+
+The pipeline uses Claude (via the Anthropic API) for query-expansion planning and Track A profile search:
+
+1. Obtain an API key from [Anthropic Console](https://console.anthropic.com/account/keys).
+2. Add it to `.env`:
+
+```bash
+$EDITOR .env              # add CLAUDE_API_KEY=<your-key>
+```
+
+### Gmail authorization
+
+After startup, Gmail credentials are auto-provisioned by Hermes' OAuth flow on first ledger-delivery attempt. No manual setup required; Hermes handles the browser redirect automatically.
 
 ### Google Drive credentials (production switch only - NOT needed for testing)
 
