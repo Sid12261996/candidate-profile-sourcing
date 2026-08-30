@@ -86,7 +86,7 @@ def run() -> dict:
         def call(prompt: str) -> str:
             nonlocal llm_fn
             if llm_fn is None:
-                from openrouter_llm import make_llm_fn
+                from ollama_llm import make_llm_fn
                 llm_fn = make_llm_fn()
             return llm_fn(prompt)
         return call
