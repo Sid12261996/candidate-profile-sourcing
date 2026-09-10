@@ -278,14 +278,15 @@ def run() -> dict:
             continue
         summary["jds"].append(jd_result)
 
-    # ---- Delivery stage (email ledger if changed) ----
+    # ---- Delivery stage (email ledger) ----
     ledger_size_after = ledger_path.stat().st_size if ledger_path.exists() else 0
-    ledger_changed = ledger_size_after > ledger_size_before
     delivery_status = None
-    if ledger_changed and cfg.get("delivery", {}).get("enabled", True):
+    # Send ledger if: (1) enabled, (2) file exists, and (3) either changed or explicitly requested
+    delivery_enabled = cfg.get("delivery", {}).get("enabled", True)
+    if delivery_enabled and ledger_path.exists():
         try:
             from gmail_delivery import send_ledger_email
-            recipient = cfg.get("delivery", {}).get("recipient", "sidharthrkc@gmail.com")
+            recipient = os.environ.get("SOURCING_EMAIL_RECIPIENT") or cfg.get("delivery", {}).get("recipient", "sidharthrkc@gmail.com")
             send_ledger_email(ledger_path, recipient)
             delivery_status = "ok"
             summary["ledger_delivered"] = True
